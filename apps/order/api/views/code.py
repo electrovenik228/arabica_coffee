@@ -2,13 +2,14 @@ from decimal import Decimal, ROUND_DOWN
 
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.cart.models import Cart
+from apps.order.api.pagination import OrderPageNumberPagination
 from apps.order.api.serializers.code import (
     OrderCreateSerializer,
     OrderSerializer,
@@ -99,6 +100,22 @@ class CreateOrderView(APIView):
 @extend_schema(
     summary="Список заказов текущего пользователя",
     tags=["Order"],
+    parameters=[
+        OpenApiParameter(
+            name="page",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="Номер страницы",
+            required=False,
+        ),
+        OpenApiParameter(
+            name="page_size",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            description="Количество элементов на странице (макс. 100)",
+            required=False,
+        ),
+    ],
     responses={
         200: OrderSerializer(many=True),
         400: OpenApiResponse(description="Неверный запрос"),
@@ -109,8 +126,10 @@ class OrderListView(APIView):
 
     def get(self, request):
         orders = Order.objects.filter(user=request.user).order_by("-created_at")
-        serializer = OrderSerializer(orders, many=True)
-        return Response(serializer.data)
+        paginator = OrderPageNumberPagination()
+        page = paginator.paginate_queryset(orders, request, view=self)
+        serializer = OrderSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 @extend_schema(
