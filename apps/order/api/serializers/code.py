@@ -87,7 +87,7 @@ class CourierOrderSerializer(serializers.ModelSerializer):
 
 class CafeOrderSerializer(serializers.ModelSerializer):
     items = OrderItemCourierSerializer(many=True, read_only=True)
-    courier_id = serializers.IntegerField(source="courier_id", read_only=True)
+    courier_id = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Order
