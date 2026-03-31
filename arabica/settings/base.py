@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+import os
 from django.utils.translation import gettext_lazy as _
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -116,3 +117,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://77.95.206.95:8001",
     "http://77.95.206.95",
 ]
+
+
+TWILIO_ACCOUNT_SID = os.environ.get('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
+TWILIO_VERIFY_SERVICE_SID = os.environ.get('TWILIO_VERIFY_SERVICE_SID')

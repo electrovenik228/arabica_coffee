@@ -1,4 +1,3 @@
-from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.users.api.serializers import SendCodeSerializer, VerifyCodeSerializer
 from arabica.api_utils import api_error
+from apps.users.utils.twilio import send_verification_code, check_verification_code
 
 User = get_user_model()
 
@@ -36,15 +36,12 @@ class SendCodeView(APIView):
         user, created = User.objects.get_or_create(phone_number=phone_number)
 
         # Генерируем код (пока заглушка)
-        code = "111111"
-
-        # Сохраняем код в Redis с TTL = 120 секунд
-        cache.set(f"verify_code:{phone_number}", code, timeout=120)
+        send_verification_code(phone_number)
 
         return Response(
             {
                 "success": True,
-                "message": "Код отправлен (пока заглушка, всегда 111111)",
+                "message": "Код отправлен на номер",
                 "is_new_user": created,
             },
             status=status.HTTP_200_OK,
@@ -64,10 +61,7 @@ class VerifyCodeView(APIView):
         phone_number = serializer.validated_data["phone_number"]
         code = serializer.validated_data["code"]
 
-        # Достаём код из Redis
-        stored_code = cache.get(f"verify_code:{phone_number}")
-
-        if not stored_code or stored_code != code:
+        if not check_verification_code(phone_number, code):
             return api_error(
                 code="invalid_code",
                 message="Неверный или просроченный код.",
@@ -86,9 +80,6 @@ class VerifyCodeView(APIView):
         # Генерация токенов
         refresh = RefreshToken.for_user(user)
         access = refresh.access_token
-
-        # Код больше не нужен → удаляем из Redis
-        cache.delete(f"verify_code:{phone_number}")
 
         return Response(
             {
