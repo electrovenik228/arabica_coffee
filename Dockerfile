@@ -1,11 +1,25 @@
-FROM python:3.11
+FROM python:3.11-slim
 
-WORKDIR .
+WORKDIR /src
 
-COPY requirements.txt ./
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+# Copy requirements first for better caching
+COPY requirements.txt /src/
 
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir -r requirements.txt && python manage.py collectstatic --noinput
+# Copy application code
+COPY . /src/
+
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
+# Run gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "arabica.wsgi:application"]

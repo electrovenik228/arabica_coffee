@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DJANGO_SETTINGS_MODULE: arabica.settings.local
+      DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+      REDIS_URL: redis://localhost:6379/0
+      SECRET_KEY: test-secret-key-for-ci-only
+      DEBUG: "False"
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-django pytest-cov
+
+    - name: Check code formatting with black
+      run: |
+        pip install black
+        black --check --line-length=88 apps/ arabica/ manage.py
+      continue-on-error: true
+
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        flake8 apps/ arabica/ manage.py --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 apps/ arabica/ manage.py --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+
+    - name: Run tests
+      run: |
+        python manage.py test --verbosity=2
+      env:
+        DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_db
+
+    - name: Generate coverage report
+      run: |
+        pip install coverage
+        coverage run --source='apps/' manage.py test
+        coverage xml
+      continue-on-error: true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+      continue-on-error: true

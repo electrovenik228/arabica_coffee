@@ -152,7 +152,12 @@ class DeleteCartItemView(APIView):
     def delete(self, request, pk):
         cart, _ = Cart.objects.get_or_create(user=request.user)
         cart_item = get_object_or_404(CartItem, id=pk, cart=cart)
-        cart_item.delete()
+
+        if cart_item.quantity > 1:
+            cart_item.quantity -= 1
+            cart_item.save(update_fields=["quantity"])
+        else:
+            cart_item.delete()
 
         cache.delete(f"user_cart_{request.user.id}")
 
