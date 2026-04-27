@@ -16,4 +16,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "avatar",
             "loyalty_points",
             "coffee_cups",
+            "is_phone_verified",
+            "phone_verified_at",
         )
+        read_only_fields = ("is_phone_verified", "phone_verified_at")

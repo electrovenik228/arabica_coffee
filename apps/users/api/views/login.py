@@ -32,17 +32,22 @@ class SendCodeView(APIView):
 
         phone_number = serializer.validated_data["phone_number"]
 
-        # Создаем пользователя или ищем существующего
-        user, created = User.objects.get_or_create(phone_number=phone_number)
+        user_exists = User.objects.filter(phone_number=phone_number).exists()
 
-        # Генерируем код (пока заглушка)
-        send_verification_code(phone_number)
+        try:
+            send_verification_code(phone_number)
+        except Exception:
+            return api_error(
+                code="verification_unavailable",
+                message="Не удалось отправить код подтверждения.",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+            )
 
         return Response(
             {
                 "success": True,
                 "message": "Код отправлен на номер",
-                "is_new_user": created,
+                "is_new_user": not user_exists,
             },
             status=status.HTTP_200_OK,
         )
@@ -57,27 +62,37 @@ class SendCodeView(APIView):
 class VerifyCodeView(APIView):
     def post(self, request, *args, **kwargs):
         serializer = VerifyCodeSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            return api_error(
+                code="validation_error",
+                message="Ошибка валидации.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                details=serializer.errors,
+            )
+
         phone_number = serializer.validated_data["phone_number"]
         code = serializer.validated_data["code"]
 
-        if not check_verification_code(phone_number, code):
+        try:
+            is_valid_code = check_verification_code(phone_number, code)
+        except Exception:
+            return api_error(
+                code="verification_unavailable",
+                message="Сервис проверки кода временно недоступен.",
+                status_code=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if not is_valid_code:
             return api_error(
                 code="invalid_code",
                 message="Неверный или просроченный код.",
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            user = User.objects.get(phone_number=phone_number)
-        except User.DoesNotExist:
-            return api_error(
-                code="user_not_found",
-                message="Пользователь не найден.",
-                status_code=status.HTTP_404_NOT_FOUND,
-            )
+        user, created = User.objects.get_or_create(phone_number=phone_number)
+        user.mark_phone_as_verified()
+        user.save(update_fields=["is_phone_verified", "phone_verified_at"])
 
-        # Генерация токенов
         refresh = RefreshToken.for_user(user)
         access = refresh.access_token
 
@@ -85,6 +100,8 @@ class VerifyCodeView(APIView):
             {
                 "success": True,
                 "message": "Код успешно подтвержден",
+                "is_new_user": created,
+                "is_phone_verified": user.is_phone_verified,
                 "access": str(access),
                 "refresh": str(refresh),
             },

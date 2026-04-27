@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 from django.utils.crypto import get_random_string  # Для генерации уникального QR-кода
 from uuid import uuid4  # Генератор уникальных ID для пользователя
 
@@ -36,6 +37,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     loyalty_points = models.IntegerField(default=0)  # Бонусные баллы
     coffee_cups = models.IntegerField(default=0)  # Чашки кофе для программы лояльности
 
+    is_phone_verified = models.BooleanField(default=False)
+    phone_verified_at = models.DateTimeField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_courier = models.BooleanField(default=False)
@@ -53,3 +56,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.qr_code:
             self.qr_code = get_random_string(40)  # Генерирует строку из 40 символов
         super().save(*args, **kwargs)
+
+    def mark_phone_as_verified(self):
+        self.is_phone_verified = True
+        if not self.phone_verified_at:
+            self.phone_verified_at = timezone.now()
