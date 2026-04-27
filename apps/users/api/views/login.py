@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,6 +12,7 @@ from arabica.api_utils import api_error
 from apps.users.utils.twilio import send_verification_code, check_verification_code
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(
@@ -36,10 +39,11 @@ class SendCodeView(APIView):
 
         try:
             send_verification_code(phone_number)
-        except Exception:
+        except Exception as exc:
+            logger.exception("Twilio send-code failed for %s", phone_number)
             return api_error(
                 code="verification_unavailable",
-                message="Не удалось отправить код подтверждения.",
+                message=f"Не удалось отправить код подтверждения: {exc}",
                 status_code=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -75,10 +79,11 @@ class VerifyCodeView(APIView):
 
         try:
             is_valid_code = check_verification_code(phone_number, code)
-        except Exception:
+        except Exception as exc:
+            logger.exception("Twilio verify-code failed for %s", phone_number)
             return api_error(
                 code="verification_unavailable",
-                message="Сервис проверки кода временно недоступен.",
+                message=f"Сервис проверки кода временно недоступен: {exc}",
                 status_code=status.HTTP_502_BAD_GATEWAY,
             )
 
