@@ -61,3 +61,24 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.is_phone_verified = True
         if not self.phone_verified_at:
             self.phone_verified_at = timezone.now()
+
+    def soft_delete(self):
+        """Деактивирует и обезличивает профиль, не удаляя строку из БД.
+
+        Заказы и бонусная история пользователя связаны через on_delete=CASCADE,
+        поэтому физическое удаление уничтожило бы историю заказов. Номер телефона
+        освобождается, чтобы клиент мог зарегистрироваться заново.
+        """
+        if self.avatar:
+            self.avatar.delete(save=False)
+
+        type(self).objects.filter(pk=self.pk).update(
+            is_active=False,
+            phone_number=f"deleted_{self.pk}"[: self._meta.get_field("phone_number").max_length],
+            first_name=None,
+            last_name=None,
+            gender=None,
+            birth_date=None,
+            avatar="",
+            qr_code=None,
+        )

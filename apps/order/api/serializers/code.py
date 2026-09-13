@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from apps.order.models import Cafe
 from apps.order.models.code import Order, OrderItem
@@ -24,6 +25,14 @@ class OrderCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class OrderItemProductSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    price = serializers.IntegerField()
+    image = serializers.CharField(allow_null=True)
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
 
@@ -37,6 +46,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "final_price",
         )
 
+    @extend_schema_field(OrderItemProductSerializer)
     def get_product(self, obj):
         product = obj.product
         image = None
@@ -50,6 +60,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return {
             "id": product.id,
             "title": product.title,
+            "description": product.description,
+            "price": product.price,
             "image": image,
         }
 

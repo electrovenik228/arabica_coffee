@@ -4,6 +4,11 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 User = get_user_model()
@@ -77,3 +82,51 @@ class PhoneVerificationAuthTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["success"], False)
+
+
+class ProfileDeletionTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            phone_number="+996700123456",
+            first_name="Aman",
+            last_name="Testov",
+        )
+        self.original_pk = self.user.pk
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+
+    def test_delete_profile_deactivates_and_anonymizes_user(self):
+        response = self.client.delete(reverse("my-profile"))
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertNotEqual(self.user.phone_number, "+996700123456")
+        self.assertIsNone(self.user.first_name)
+        self.assertIsNone(self.user.last_name)
+        self.assertIsNone(self.user.qr_code)
+
+    def test_delete_profile_blacklists_outstanding_tokens(self):
+        refresh = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        outstanding = OutstandingToken.objects.get(jti=refresh["jti"])
+
+        self.client.delete(reverse("my-profile"))
+
+        self.assertTrue(BlacklistedToken.objects.filter(token=outstanding).exists())
+
+    def test_freed_phone_number_can_be_used_to_register_again(self):
+        self.client.delete(reverse("my-profile"))
+        self.client.credentials()  # deleted account's token is now blacklisted
+
+        response = self.client.post(
+            reverse("verify_code"),
+            {"phone_number": "+996700123456", "code": "111111"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["is_new_user"])
+        new_user = User.objects.get(phone_number="+996700123456")
+        self.assertNotEqual(new_user.pk, self.original_pk)
