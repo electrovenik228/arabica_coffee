@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -10,11 +12,17 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.users.models import PhoneConfirmationCode, TelegramLink
+from apps.users.utils.telegram import TelegramNotLinkedError
+
 
 User = get_user_model()
 
 
 class PhoneVerificationAuthTests(APITestCase):
+    def setUp(self):
+        cache.clear()  # reset per-IP send/verify code throttle counters between tests
+
     def test_send_code_accepts_e164_phone_and_does_not_create_user(self):
         with patch("apps.users.api.views.login.send_verification_code") as mock_send:
             response = self.client.post(
@@ -28,10 +36,10 @@ class PhoneVerificationAuthTests(APITestCase):
         self.assertFalse(User.objects.filter(phone_number="+996700123456").exists())
         mock_send.assert_called_once_with("+996700123456")
 
-    def test_send_code_returns_error_when_twilio_fails(self):
+    def test_send_code_returns_error_when_delivery_fails(self):
         with patch(
             "apps.users.api.views.login.send_verification_code",
-            side_effect=Exception("twilio error"),
+            side_effect=Exception("telegram error"),
         ):
             response = self.client.post(
                 reverse("send_code"),
@@ -42,6 +50,53 @@ class PhoneVerificationAuthTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
         self.assertEqual(response.data["success"], False)
 
+    def test_send_code_returns_telegram_not_linked_error(self):
+        with patch(
+            "apps.users.api.views.login.send_verification_code",
+            side_effect=TelegramNotLinkedError("+996700123456"),
+        ):
+            response = self.client.post(
+                reverse("send_code"),
+                {"phone_number": "+996700123456"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["error"]["code"], "telegram_not_linked")
+
+    def test_send_and_verify_code_via_telegram_flow(self):
+        TelegramLink.objects.create(phone_number="+996700123456", chat_id=555)
+
+        with patch("apps.users.utils.telegram.send_telegram_message") as mock_send:
+            response = self.client.post(
+                reverse("send_code"),
+                {"phone_number": "+996700123456"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], 555)
+
+        confirmation = PhoneConfirmationCode.objects.get(phone_number="+996700123456")
+
+        response = self.client.post(
+            reverse("verify_code"),
+            {"phone_number": "+996700123456", "code": confirmation.code},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access", response.data)
+
+        # A used code cannot be replayed.
+        response = self.client.post(
+            reverse("verify_code"),
+            {"phone_number": "+996700123456", "code": confirmation.code},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_verify_code_marks_user_as_verified_and_returns_tokens(self):
         with patch("apps.users.api.views.login.check_verification_code", return_value=True):
             response = self.client.post(
@@ -49,21 +104,6 @@ class PhoneVerificationAuthTests(APITestCase):
                 {"phone_number": "+996700123456", "code": "1234"},
                 format="json",
             )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("access", response.data)
-        self.assertIn("refresh", response.data)
-
-        user = User.objects.get(phone_number="+996700123456")
-        self.assertTrue(user.is_phone_verified)
-        self.assertIsNotNone(user.phone_verified_at)
-
-    def test_verify_code_accepts_temporary_stub_code(self):
-        response = self.client.post(
-            reverse("verify_code"),
-            {"phone_number": "+996700123456", "code": "111111"},
-            format="json",
-        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("access", response.data)
@@ -120,9 +160,13 @@ class ProfileDeletionTests(APITestCase):
         self.client.delete(reverse("my-profile"))
         self.client.credentials()  # deleted account's token is now blacklisted
 
+        confirmation = PhoneConfirmationCode.objects.create(
+            phone_number="+996700123456", code="482913"
+        )
+
         response = self.client.post(
             reverse("verify_code"),
-            {"phone_number": "+996700123456", "code": "111111"},
+            {"phone_number": "+996700123456", "code": confirmation.code},
             format="json",
         )
 
@@ -130,3 +174,46 @@ class ProfileDeletionTests(APITestCase):
         self.assertTrue(response.data["is_new_user"])
         new_user = User.objects.get(phone_number="+996700123456")
         self.assertNotEqual(new_user.pk, self.original_pk)
+
+
+class TelegramWebhookTests(APITestCase):
+    def test_contact_message_links_phone_to_chat(self):
+        with patch("apps.users.api.views.telegram_webhook.send_telegram_message") as mock_send:
+            response = self.client.post(
+                reverse("telegram-webhook"),
+                {
+                    "message": {
+                        "chat": {"id": 777},
+                        "contact": {"phone_number": "996700123456"},
+                    }
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        link = TelegramLink.objects.get(phone_number="+996700123456")
+        self.assertEqual(link.chat_id, 777)
+        mock_send.assert_called_once()
+
+    def test_start_command_prompts_contact_share(self):
+        with patch("apps.users.api.views.telegram_webhook.send_telegram_message") as mock_send:
+            response = self.client.post(
+                reverse("telegram-webhook"),
+                {"message": {"chat": {"id": 777}, "text": "/start"}},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send.assert_called_once()
+        self.assertIn("reply_markup", mock_send.call_args.kwargs)
+
+    @override_settings(TELEGRAM_WEBHOOK_SECRET="expected-secret")
+    def test_rejects_request_with_wrong_secret(self):
+        response = self.client.post(
+            reverse("telegram-webhook"),
+            {"message": {"chat": {"id": 777}, "text": "/start"}},
+            format="json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="wrong-secret",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

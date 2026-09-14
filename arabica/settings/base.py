@@ -142,6 +142,16 @@ TWILIO_VERIFY_SERVICE_SID = config(
     "TWILIO_VERIFY_SERVICE_SID", default=os.environ.get("TWILIO_VERIFY_SERVICE_SID")
 )
 
+# Временная замена Twilio: код подтверждения доставляется через Telegram-бота.
+# Чтобы вернуться на Twilio, поменяйте импорт в apps/users/api/views/login.py
+# обратно на apps.users.utils.twilio.
+TELEGRAM_BOT_TOKEN = config("TELEGRAM_BOT_TOKEN", default="")
+TELEGRAM_BOT_USERNAME = config("TELEGRAM_BOT_USERNAME", default="")
+TELEGRAM_WEBHOOK_SECRET = config("TELEGRAM_WEBHOOK_SECRET", default="")
+TELEGRAM_BOT_DEEPLINK = (
+    f"https://t.me/{TELEGRAM_BOT_USERNAME}" if TELEGRAM_BOT_USERNAME else ""
+)
+
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/3")
 CELERY_RESULT_BACKEND = config(
     "CELERY_RESULT_BACKEND", default="redis://localhost:6379/4"

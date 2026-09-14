@@ -7,10 +7,18 @@ from rest_framework import status
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from django.conf import settings
+
 from apps.users.api.serializers import SendCodeSerializer, VerifyCodeSerializer
 from apps.users.api.throttles import SendCodeThrottle, VerifyCodeThrottle
 from arabica.api_utils import api_error
-from apps.users.utils.twilio import send_verification_code, check_verification_code
+# Временно используем Telegram-бота вместо Twilio (см. apps/users/utils/telegram.py).
+# Чтобы вернуться на Twilio, поменяйте этот импорт обратно на apps.users.utils.twilio.
+from apps.users.utils.telegram import (
+    TelegramNotLinkedError,
+    check_verification_code,
+    send_verification_code,
+)
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -42,8 +50,18 @@ class SendCodeView(APIView):
 
         try:
             send_verification_code(phone_number)
+        except TelegramNotLinkedError:
+            return api_error(
+                code="telegram_not_linked",
+                message=(
+                    "Сначала откройте бота в Telegram и поделитесь номером телефона, "
+                    "чтобы получать коды подтверждения."
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+                details={"bot_url": settings.TELEGRAM_BOT_DEEPLINK},
+            )
         except Exception as exc:
-            logger.exception("Twilio send-code failed for %s", phone_number)
+            logger.exception("Telegram send-code failed for %s", phone_number)
             return api_error(
                 code="verification_unavailable",
                 message="Не удалось отправить код подтверждения. Попробуйте позже.",
@@ -85,7 +103,7 @@ class VerifyCodeView(APIView):
         try:
             is_valid_code = check_verification_code(phone_number, code)
         except Exception as exc:
-            logger.exception("Twilio verify-code failed for %s", phone_number)
+            logger.exception("Telegram verify-code failed for %s", phone_number)
             return api_error(
                 code="verification_unavailable",
                 message="Сервис проверки кода временно недоступен. Попробуйте позже.",

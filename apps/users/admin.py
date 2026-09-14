@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.users.models import User
+from apps.users.models import TelegramLink, User
 
 
 @admin.register(User)
@@ -34,3 +34,9 @@ class UserAdmin(admin.ModelAdmin):
         "groups",
         "user_permissions",
     )
+
+
+@admin.register(TelegramLink)
+class TelegramLinkAdmin(admin.ModelAdmin):
+    list_display = ("phone_number", "chat_id", "linked_at")
+    search_fields = ("phone_number",)
