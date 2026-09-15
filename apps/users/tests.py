@@ -1,7 +1,9 @@
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
@@ -178,7 +180,7 @@ class ProfileDeletionTests(APITestCase):
 
 class TelegramWebhookTests(APITestCase):
     def test_contact_message_links_phone_to_chat(self):
-        with patch("apps.users.api.views.telegram_webhook.send_telegram_message") as mock_send:
+        with patch("apps.users.utils.telegram.send_telegram_message") as mock_send:
             response = self.client.post(
                 reverse("telegram-webhook"),
                 {
@@ -196,7 +198,7 @@ class TelegramWebhookTests(APITestCase):
         mock_send.assert_called_once()
 
     def test_start_command_prompts_contact_share(self):
-        with patch("apps.users.api.views.telegram_webhook.send_telegram_message") as mock_send:
+        with patch("apps.users.utils.telegram.send_telegram_message") as mock_send:
             response = self.client.post(
                 reverse("telegram-webhook"),
                 {"message": {"chat": {"id": 777}, "text": "/start"}},
@@ -217,3 +219,38 @@ class TelegramWebhookTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TelegramPollingCommandTests(APITestCase):
+    """Сервер хостится в РФ, поэтому вебхук ненадёжен и апдейты забираются long polling'ом."""
+
+    @override_settings(TELEGRAM_BOT_TOKEN="test-token")
+    def test_processes_updates_and_advances_offset(self):
+        calls = []
+
+        def fake_get_updates(offset=None, timeout=30):
+            calls.append(offset)
+            if len(calls) == 1:
+                return [{"update_id": 100, "message": {"chat": {"id": 777}, "text": "/start"}}]
+            raise KeyboardInterrupt  # stop the infinite polling loop for the test
+
+        with patch(
+            "apps.users.management.commands.poll_telegram_updates.get_updates",
+            side_effect=fake_get_updates,
+        ), patch(
+            "apps.users.management.commands.poll_telegram_updates.requests.post"
+        ), patch(
+            "apps.users.utils.telegram.send_telegram_message"
+        ) as mock_send:
+            with self.assertRaises(KeyboardInterrupt):
+                call_command("poll_telegram_updates")
+
+        mock_send.assert_called_once()
+        self.assertEqual(calls, [None, 101])  # offset advances past the processed update_id
+
+    def test_exits_without_token(self):
+        out = StringIO()
+        with override_settings(TELEGRAM_BOT_TOKEN=""):
+            call_command("poll_telegram_updates", stderr=out)
+
+        self.assertIn("TELEGRAM_BOT_TOKEN", out.getvalue())
