@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.bonus.services.wallet import spend_order_points
 from apps.cart.models import Cart
 from apps.order.api.pagination import OrderPageNumberPagination
 from apps.order.api.serializers.code import (
@@ -112,15 +113,20 @@ class CreateOrderView(APIView):
             if use_bonus_points > 0:
                 bonus_spent  = min(use_bonus_points, int(total_price))
                 total_price  = max(Decimal("0.00"), total_price - Decimal(str(bonus_spent)))
-                locked_user.loyalty_points -= bonus_spent
 
-            earned_int = int(bonus_earned.quantize(Decimal("1"), rounding=ROUND_DOWN))
+            # Баллы не начисляются на часть заказа, оплаченную баллами — иначе
+            # клиент мог бы бесконечно воспроизводить баллы, оплачивая ими же
+            # новые заказы и получая новые баллы с "бесплатной" суммы.
+            earned_int = (
+                0 if bonus_spent > 0
+                else int(bonus_earned.quantize(Decimal("1"), rounding=ROUND_DOWN))
+            )
             order.total_price = total_price
             order.bonus_spent = bonus_spent
             order.bonus_earned = earned_int
             order.save(update_fields=["total_price", "bonus_spent", "bonus_earned"])
 
-            locked_user.save(update_fields=["loyalty_points"])
+            spend_order_points(locked_user, order, bonus_spent)
 
             cart.items.all().delete()
             cache.delete(f"user_cart_{user.id}")

@@ -44,7 +44,8 @@ class ScanQRCodeView(APIView):
             "user_id": user.id,
             "name": f"{user.first_name} {user.last_name}",
             "loyalty_points": user.loyalty_points,
-            "coffee_cups": user.coffee_cups
+            "coffee_cups": user.coffee_cups,
+            "free_cups_available": user.free_coffee_cups,
         })
 
         return Response(response_serializer.data)

@@ -35,7 +35,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     qr_code = models.CharField(max_length=40, unique=True, blank=True, null=True)
 
     loyalty_points = models.IntegerField(default=0)  # Бонусные баллы
-    coffee_cups = models.IntegerField(default=0)  # Чашки кофе для программы лояльности
+    coffee_cups = models.IntegerField(default=0)  # Чашки кофе в текущем цикле "Кофейной миссии"
+    free_coffee_cups = models.PositiveIntegerField(
+        default=0,
+        help_text="Заработанные, но ещё не выданные бесплатные чашки (после накопления coffee_cups).",
+    )
 
     is_phone_verified = models.BooleanField(default=False)
     phone_verified_at = models.DateTimeField(blank=True, null=True)

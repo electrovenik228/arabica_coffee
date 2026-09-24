@@ -1,2 +1,3 @@
-# Bonus accrual and coffee cup logic is handled in apps/order/signals.py
-# via the handle_order_delivered signal (fires when order.status == "delivered").
+# Начисление бонусов и чашек кофе — apps.bonus.services.wallet.award_order_bonus.
+# Вызывается из apps/order/signals.py (handle_order_delivered) и из
+# apps/bonus/api/views/loyalty.py (ручное подтверждение курьером по order_id).

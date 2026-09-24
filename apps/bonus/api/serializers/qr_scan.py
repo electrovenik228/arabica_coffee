@@ -5,3 +5,4 @@ class ScanQRCodeResponseSerializer(serializers.Serializer):
     name = serializers.CharField()
     loyalty_points = serializers.IntegerField()
     coffee_cups = serializers.IntegerField()
+    free_cups_available = serializers.IntegerField()

@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -6,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.bonus.services.wallet import refund_order_points
 from apps.order.api.serializers.code import OrderSerializer
 from apps.order.models.code import Order
 from arabica.api_utils import api_error
@@ -45,8 +47,10 @@ class CancelOrderView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
-        order.status = "cancelled"
-        order.updated_at = timezone.now()
-        order.save(update_fields=["status", "updated_at"])
+        with transaction.atomic():
+            order.status = "cancelled"
+            order.updated_at = timezone.now()
+            order.save(update_fields=["status", "updated_at"])
+            refund_order_points(order)
 
         return Response(OrderSerializer(order).data)
