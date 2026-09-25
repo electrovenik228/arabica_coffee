@@ -114,6 +114,7 @@ def serialize_order(order):
         "delivery_type_label": order.get_delivery_type_display(),
         "address": order.address or "",
         "delivery_time": order.delivery_time.strftime("%H:%M") if order.delivery_time else "",
+        "courier_comment": order.courier_comment,
         "total_price": str(order.total_price),
         "created_at": order.created_at.strftime("%H:%M"),
         "created_at_iso": order.created_at.isoformat(),

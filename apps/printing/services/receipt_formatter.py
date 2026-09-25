@@ -80,6 +80,8 @@ def format_receipt(order) -> str:
             lines.append(f"Адрес: {order.address}")
         if order.delivery_time:
             lines.append(f"Время доставки: {order.delivery_time.strftime('%H:%M')}")
+        if order.courier_comment:
+            lines.append(f"Комментарий: {order.courier_comment}")
     else:
         lines.append("Тип: Самовывоз")
 

@@ -61,6 +61,7 @@ class CreateOrderView(APIView):
         delivery_type    = serializer.validated_data.get("delivery_type", "pickup")
         address          = serializer.validated_data.get("address")
         delivery_time    = serializer.validated_data.get("delivery_time")
+        courier_comment  = serializer.validated_data.get("courier_comment") or ""
         use_bonus_points = serializer.validated_data.get("use_bonus_points", 0)
 
         with transaction.atomic():
@@ -84,6 +85,7 @@ class CreateOrderView(APIView):
                 delivery_type=delivery_type,
                 address=address,
                 delivery_time=delivery_time,
+                courier_comment=courier_comment,
                 total_price=Decimal("0.00"),
                 bonus_spent=0,
             )

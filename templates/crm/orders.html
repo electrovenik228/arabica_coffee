@@ -688,6 +688,7 @@
               <div class="irow-lbl">Адрес доставки</div>
               <div class="irow-val">${esc(o.address || '—')}</div>
               ${o.delivery_time ? `<div class="irow-sub">🕐 К ${esc(o.delivery_time)}</div>` : ''}
+              ${o.courier_comment ? `<div class="irow-sub">💬 ${esc(o.courier_comment)}</div>` : ''}
             </div>
           </div>` : ''}
           <div class="irow">

@@ -9,6 +9,10 @@ class OrderCreateSerializer(serializers.Serializer):
     delivery_type = serializers.ChoiceField(choices=Order.DELIVERY_TYPE_CHOICES, default="pickup")
     address = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=500)
     delivery_time = serializers.TimeField(required=False, allow_null=True)
+    courier_comment = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=500,
+        help_text="Комментарий для курьера (подъезд, этаж, код домофона и т.п.).",
+    )
     use_bonus_points = serializers.IntegerField(
         required=False, default=0, min_value=0,
         help_text="Количество бонусных баллов для списания (1 балл = 1 сом скидки).",
@@ -77,6 +81,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "delivery_type",
             "address",
             "delivery_time",
+            "courier_comment",
             "total_price",
             "bonus_spent",
             "created_at",
@@ -103,6 +108,7 @@ class CourierOrderSerializer(serializers.ModelSerializer):
             "delivery_type",
             "address",
             "delivery_time",
+            "courier_comment",
             "items",
         )
 
@@ -119,6 +125,7 @@ class CafeOrderSerializer(serializers.ModelSerializer):
             "delivery_type",
             "address",
             "delivery_time",
+            "courier_comment",
             "total_price",
             "courier_id",
             "items",

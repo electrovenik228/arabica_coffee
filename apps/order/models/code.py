@@ -39,6 +39,7 @@ class Order(models.Model):
     delivery_type = models.CharField(max_length=10, choices=DELIVERY_TYPE_CHOICES)
     address = models.TextField(blank=True, null=True)  # Только для доставки
     delivery_time = models.TimeField(blank=True, null=True)  # Время доставки
+    courier_comment = models.TextField(blank=True, default="")  # Комментарий клиента для курьера
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     bonus_spent = models.PositiveIntegerField(default=0)
     bonus_earned = models.PositiveIntegerField(default=0)
